@@ -53,6 +53,8 @@ sudo sed -i '$ i /etc/x729pwr.sh &' /etc/rc.local
 
 BUTTON=26
 
+sudo systemctl stop pigpiod
+
 echo "$BUTTON" > /sys/class/gpio/export;
 echo "out" > /sys/class/gpio/gpio$BUTTON/direction
 echo "1" > /sys/class/gpio/gpio$BUTTON/value
@@ -71,4 +73,3 @@ echo "x729 Shutting down..."
 echo "0" > /sys/class/gpio/gpio$BUTTON/value
 ' > /usr/local/bin/x729softsd.sh
 sudo chmod +x /usr/local/bin/x729softsd.sh
-sudo systemctl enable pigpiod
