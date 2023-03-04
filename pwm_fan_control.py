@@ -7,7 +7,7 @@ import subprocess
 IO.setwarnings(False)
 IO.setmode (IO.BCM)
 IO.setup(13,IO.OUT)
-fan = IO.PWM(13,25000)
+fan = IO.PWM(13,200)
 fan.start(0)
 
 def get_temp():
@@ -25,13 +25,13 @@ while 1:
     elif temp > 60:
         fan.ChangeDutyCycle(85)
     elif temp > 50:
-        fan.ChangeDutyCycle(70)
+        fan.ChangeDutyCycle(60)
     elif temp > 40:
         fan.ChangeDutyCycle(50)
     elif temp > 32:
-        fan.ChangeDutyCycle(25)
+        fan.ChangeDutyCycle(45)
     elif temp > 25:
-        fan.ChangeDutyCycle(15)
+        fan.ChangeDutyCycle(40)
     else:
         fan.ChangeDutyCycle(0)
     time.sleep(5)                            # Sleep for 5 seconds
