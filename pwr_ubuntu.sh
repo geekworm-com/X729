@@ -92,15 +92,14 @@ while True:
       time.sleep(1)
       print ("---AC Power Loss OR Power Adapter Failure---")
       if seconds >= 5:
-        print ("Shutdown in 5 seconds")
-        time.sleep(5)
-        lgpio.gpio_write(h, 26, 1)
-        time.sleep(3)
         lgpio.gpio_write(h, 26, 0)
-
+        time.sleep(4)
+        lgpio.gpio_write(h, 26, 1)
+        time.sleep(1)
     time.sleep(1)' > /opt/x729/plsd.py
+
   echo '[Unit]
-Description=x729 PWM fan service
+Description=x729 power loss service
 After=multi-user.target
 Conflicts=getty@tty1.service
 
