@@ -3,57 +3,46 @@
 #
 
 # Install gpiod so we can interact with gpio pins
-apt install gpiod python3-lgpio -y
+apt install python3-gpiozero gpiod python3-lgpio -y
 
 
 mkdir -p /opt/x729
-echo '#!/bin/bash
+echo '#!/usr/bin/python3
 
-SHUTDOWN=GPIO5
-BOOT=GPIO12
+from gpiozero import LED
+from gpiozero import Button
+import time
+import os
 
-REBOOTPULSEMINIMUM=200
-REBOOTPULSEMAXIMUM=600
-
-# Ensure the background gpioset is killed if this script is killed or terminates
-trap "trap - SIGTERM && kill -- -$$" SIGINT SIGTERM EXIT
+REBOOTPULSEMINIMUM=2
+REBOOTPULSEMAXIMUM=6
 
 # Hold BOOT GPIO Pin high
-gpioset --mode=signal $(gpiofind $BOOT)=1 &
+boot = LED(12)
+boot.on()
 
-while [ 1 ]; do
+shutdown = Button(5,pull_up=False)
+
+print(shutdown.is_pressed)
+while True:
   # Wait for a change
-  gpiomon  -r -n 1  $(gpiofind $SHUTDOWN)
-  while [ 1 ]; do
-    shutdownSignal=$(gpioget $(gpiofind $SHUTDOWN))
-    if [ $shutdownSignal = 0 ]; then
-      # Return to waiting for change
-      break
-    else
-      pulseStart=$(date +%s%N | cut -b1-13)
-      while [ $shutdownSignal = 1 ]; do
-        /bin/sleep 0.02
-        if [ $(($(date +%s%N | cut -b1-13)-$pulseStart)) -gt $REBOOTPULSEMAXIMUM ]; then
-          # Power off if GPIO = 1 for more than REBOOTPULSEMAXIMUM centiseconds
-          echo "X729 Shutting down", SHUTDOWN, ", halting Rpi ..."
-          poweroff
-          exit
-        fi
-        shutdownSignal=$(gpioget $(gpiofind $SHUTDOWN))
-      done
-      if [ $(($(date +%s%N | cut -b1-13)-$pulseStart)) -gt $REBOOTPULSEMINIMUM ]; then
-	# Reboot if GPIO = 1 for more than REBOOTPULSEMINIMUM centiseconds
-        echo "X729 Rebooting", SHUTDOWN, ", recycling Rpi ..."
-        reboot
-        exit
-      else
-        # Return to waiting for change
-	break
-      fi
-    fi
-  done
-done' > /opt/x729/pwr.sh
-chmod +x /opt/x729/pwr.sh
+  shutdown.wait_for_press()
+  pulseStart = time.time()
+  while shutdown.is_pressed:
+    #shutdown.wait_for_release()
+    time.sleep(0.2)
+    if time.time() - pulseStart > REBOOTPULSEMAXIMUM:
+      # Power off if GPIO = 1 for more than REBOOTPULSEMAXIMUM seconds
+      print("X729 Shutting down halting Rpi ...")
+      os.system("poweroff")
+      exit
+  print("Released")
+  if time.time() - pulseStart > REBOOTPULSEMINIMUM:
+    # Reboot if GPIO = 1 for more than REBOOTPULSEMINIMUM seconds
+    print("X729 Rebooting recycling Rpi ...")
+    os.system("reboot")
+    exit' > /opt/x729/pwr.py
+chmod +x /opt/x729/pwr.py
 
 
 echo '[Unit]
@@ -63,7 +52,7 @@ After=multi-user.target
 [Service]
 Type=simple
 Restart=on-failure
-ExecStart=/opt/x729/pwr.sh
+ExecStart=python3 /opt/x729/pwr.py
 
 [Install]
 WantedBy=multi-user.target
@@ -79,22 +68,25 @@ echo
 if [[ $REPLY =~ ^[Yy]$ ]]
 then
   echo '#!/usr/bin/env python
-import lgpio
+
+from gpiozero import LED
+from gpiozero import Button
 import time
 
-h = lgpio.gpiochip_open(0)
-lgpio.gpio_claim_input(h, 6)
+pl = Button(6)
+dn = LED(26)
 
 while True:
     seconds = 0
-    while lgpio.gpio_read(h, 6):     # if port 6 == 1
+    while not pl.is_pressed:     # if port 6 == 1
       seconds += 1
       time.sleep(1)
       print ("---AC Power Loss OR Power Adapter Failure---")
       if seconds >= 5:
-        lgpio.gpio_write(h, 26, 0)
-        time.sleep(4)
-        lgpio.gpio_write(h, 26, 1)
+        print ("Recovery time over, shutdown")
+        dn.off()
+        time.sleep(4) #should this be longer?
+        dn.on()
         time.sleep(1)
     time.sleep(1)' > /opt/x729/plsd.py
 
@@ -123,16 +115,13 @@ if [[ $REPLY =~ ^[Yy]$ ]]
 then
   echo '#!/usr/bin/python3
 
-import lgpio
+from gpiozero import PWMLED
 import time
 import subprocess
 
 GPIO = 13
-FREQ = 200
 
-fan = lgpio.gpiochip_open(0)
-lgpio.gpio_claim_output(fan,GPIO)
-lgpio.tx_pwm(fan, GPIO, FREQ, 0)
+fan = PWMLED(GPIO)
 def get_temp():
     output = subprocess.run(["vcgencmd", "measure_temp"], capture_output=True)
     temp_str = output.stdout.decode()
@@ -145,19 +134,19 @@ while 1:
     temp = get_temp()                        # Get the current CPU temperature
     #print(f"{temp}")
     if temp > 70:                            # Check temperature threshhold, in degrees celcius
-        lgpio.tx_pwm(fan, GPIO, FREQ, 100)             # Set fan duty based on temperature, 100 is max speed and 0 is min speed or off.
+        fan.value = 1                        # Set fan duty based on temperature, 100 is max speed and 0 is min speed or off.
     elif temp > 60:
-        lgpio.tx_pwm(fan, GPIO, FREQ, 95)
+        fan.value = 0.95
     elif temp > 50:
-        lgpio.tx_pwm(fan, GPIO, FREQ, 90)
+        fan.value = 0.90
     elif temp > 40:
-        lgpio.tx_pwm(fan, GPIO, FREQ, 80)
+        fan.value = 0.80
     elif temp > 32:
-        lgpio.tx_pwm(fan, GPIO, FREQ, 60)
+        fan.value = 0.60
     elif temp > 25:
-        lgpio.tx_pwm(fan, GPIO, FREQ, 40)
+        fan.value = 0.40
     else:
-        lgpio.tx_pwm(fan, GPIO, FREQ, 0)
+        fan.value = 0
     time.sleep(5)    ' > /opt/x729/pwm_fan_control.py
 
   echo '[Unit]
